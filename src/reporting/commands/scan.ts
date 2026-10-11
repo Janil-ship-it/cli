@@ -53,6 +53,7 @@ import { emitIngestIdLine, emitDriftScoreLine } from '../utils/ingest-id-output.
 import { formatUploadHttpFailure, uploadScanArtifact } from '../utils/upload.js';
 import { redactForDisplay } from '../../core-open/utils/redact.js';
 import { buildGraph } from '../../engine/build.js';
+import { assertLockfilesValid, LockfileSyntaxError } from '../../engine/lockfile-guard.js';
 import { parseFailureWarningLines } from '../../engine/parse-warning.js';
 import { writeArtifacts, resolveGraphPath } from '../../engine/artifacts.js';
 import { readHaileSidecar } from '../../engine/haile/sidecar.js';
@@ -476,6 +477,15 @@ export const scanCommand = new Command('scan')
       assertSafeWalkRoot(rootDir);
     } catch (err) {
       if (err instanceof UnsafeRootError) throw new CliError(err.message, ExitCode.ERROR);
+      throw err;
+    }
+
+    // Before project scanners and the code-map parse workers. A truncated
+    // lockfile must not become a partial dependency graph or a successful exit.
+    try {
+      assertLockfilesValid(rootDir);
+    } catch (err) {
+      if (err instanceof LockfileSyntaxError) throw new CliError(err.message, ExitCode.ERROR);
       throw err;
     }
 

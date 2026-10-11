@@ -43,6 +43,7 @@ const KIND_BY_BASENAME: Readonly<Record<string, LockfileKind>> = {
   'cargo.lock': 'TOML',
   'yarn.lock': 'yarn.lock',
   'go.sum': 'go.sum',
+  'go.work.sum': 'go.sum',
   'gradle.lockfile': 'gradle.lockfile',
   'gemfile.lock': 'Gemfile.lock',
 };
@@ -204,7 +205,8 @@ function assertYarn(filePath: string, text: string): void {
 }
 
 function assertGoSum(filePath: string, text: string): void {
-  if (!text.trim()) throw new LockfileParseError(filePath, 'go.sum');
+  // An empty sum is a module with no dependencies, not a truncated file.
+  if (!text.trim()) return;
   const lineRe = /^\S+\s+v\S+\s+h1:\S+$/;
   for (const raw of text.split('\n')) {
     const line = raw.trim();
