@@ -23,6 +23,7 @@ For a quick overview, see the [README](./README.md). This document covers everyt
   - [vg sbom](#vg-sbom)
     - [Choosing CycloneDX or SPDX](#choosing-cyclonedx-or-spdx)
     - [Component identity](#component-identity)
+    - [Reading an SBOM that has no package URL and no CPE](#reading-an-sbom-that-has-no-package-url-and-no-cpe)
     - [Package digests](#package-digests)
     - [CycloneDX type and SPDX primaryPackagePurpose](#cyclonedx-type-and-spdx-primarypackagepurpose)
     - [Production, development, and optional scope](./docs/sbom-dependency-scope.md)
@@ -324,7 +325,7 @@ vg evidence export [--out <dir>] [--regime <id>]
 | `vg evidence push` | Push the product registry, every frozen release manifest, and an optional signed exposure bundle to Vibgrate Cloud, which verifies the signature |
 | `vg evidence export` | Air-gap bundle of all evidence state |
 
-`release` freezes the manifest from a Vibgrate scan artifact or an SBOM — CycloneDX, SPDX, or either one wrapped in an in-toto / DSSE **SBOM attestation**. Where the artefact is a container image, it can also take the facts straight from what BuildKit wrote instead of values typed in by hand: `--buildkit-metadata` reads the `docker buildx build --metadata-file` output for the image digest and build reference; `--provenance` reads a SLSA provenance attestation for the source repository, commit, and base images; and `--image <ref>` asks Docker for the image's digest, `org.opencontainers.image.*` labels, and any attached provenance and SBOM attestations (an attached SBOM becomes the manifest when `--from` is not given). `--image` runs `docker image inspect` and `docker buildx imagetools inspect`; the second contacts the image's registry when the reference is not present locally. Those facts are stored under `build` in the frozen manifest. A typed `--digest` that disagrees with what the build wrote is an error, never a silent preference, and attestation signatures are recorded as unverified — verify them with `cosign`.
+`release` freezes the manifest from a Vibgrate scan artifact or an SBOM — CycloneDX, SPDX, or either one wrapped in an in-toto / DSSE **SBOM attestation**. A component with neither a package URL nor a CPE is kept when it has a name, a version, and a type. A component that cannot be identified is skipped, and the command prints one warning for that file. See [Reading an SBOM that has no package URL and no CPE](#reading-an-sbom-that-has-no-package-url-and-no-cpe). Where the artefact is a container image, it can also take the facts straight from what BuildKit wrote instead of values typed in by hand: `--buildkit-metadata` reads the `docker buildx build --metadata-file` output for the image digest and build reference; `--provenance` reads a SLSA provenance attestation for the source repository, commit, and base images; and `--image <ref>` asks Docker for the image's digest, `org.opencontainers.image.*` labels, and any attached provenance and SBOM attestations (an attached SBOM becomes the manifest when `--from` is not given). `--image` runs `docker image inspect` and `docker buildx imagetools inspect`; the second contacts the image's registry when the reference is not present locally. Those facts are stored under `build` in the frozen manifest. A typed `--digest` that disagrees with what the build wrote is an error, never a silent preference, and attestation signatures are recorded as unverified — verify them with `cosign`.
 
 A `--from` file that is truncated, not valid JSON, or a CycloneDX or SPDX document missing a required field exits `1`. The message names that file and the format it expected: CycloneDX JSON with `bomFormat`, `specVersion`, and `version`, or SPDX JSON with `spdxVersion`, `SPDXID`, and `name`. It says to regenerate the SBOM and run the command again. The document and any home directory stay out of the message. A component or package missing `name` fails the command. The same check applies to an SBOM attached to an image. An unversioned component stays out of the frozen manifest: both formats allow a component without a version, and a manifest records a concrete one.
 
@@ -1742,6 +1743,24 @@ For `com.google.code.gson:gson` at `2.11.0` in a Java project, read these fields
 ```
 
 Key the join on `pkg:maven/com.google.code.gson/gson@2.11.0`, or on `maven` + `com.google.code.gson:gson` + `2.11.0`. The group `com.google.code.gson` is the purl namespace. SPDX stores the same purl on `externalRefs[].referenceLocator`.
+
+#### Reading an SBOM that has no package URL and no CPE
+
+`vg evidence release` reads a CycloneDX or SPDX document with `--from`, and it reads an SBOM attestation attached to `--image`. Vendored code, a file, firmware, and a machine-learning model often have a name and a version and neither a package URL nor a CPE. Those rows are part of what shipped.
+
+The read keeps them. The identity is the name, the version, and the type. The same three values are one component. A different type is a different component. The first copy in the document is the one that is kept. CycloneDX `type` is the type. An omitted type is `unknown`. An SPDX package uses `primaryPackagePurpose`, lowercased, with underscores written as hyphens. An omitted purpose is `package`. An SPDX file is `file`. The component has no ecosystem. An advisory that names an ecosystem does not match it.
+
+A component with a package URL is keyed on that URL. A component with no package URL and a CPE is keyed on the CPE. CycloneDX uses the `cpe` field. SPDX uses an external reference whose type is `cpe22Type` or `cpe23Type`. When both a package URL and a CPE are present, the package URL is the identity.
+
+A component with neither identifier, and with no name or no version, is not kept. The command prints one warning for that file. The warning gives the count. It does not print one line per component. The same warning also says when the read stopped: after 50,000 components, or at nesting deeper than 32. A cycle in nested `components` or nested `packages` is read once. The command does not loop, and it does not contact the network.
+
+Nested CycloneDX `components` are read, including components listed only under the metadata component. The metadata component itself is the document root and is not a row. Nested SPDX `packages` and SPDX `files` are read. Relationship edges are not a second inventory and are not followed, so a cycle there does not change the component list. The package that describes the image itself — SPDX purpose `CONTAINER`, or a `pkg:oci/` package URL — is not a component.
+
+The same file read twice produces the same components and the same warning.
+
+```bash
+vg evidence release device-firmware 1.0.0 --from sbom.cdx.json
+```
 
 #### Package digests
 
