@@ -5025,7 +5025,7 @@ The key on every result is `vg/finding-id/v1`. The value is a content id: 32 low
 | Drift finding identified by its rule and location (runtime end-of-life, runtime lag, dependency rot) | The rule id and the location. This is the same id `vg scan --baseline` stores when that finding is suppressed. A change to the message, such as a newer latest version, does not change the value. |
 | Known vulnerability (`vibgrate/vulnerability`) | The rule id, the location, the ecosystem, the package name, and the advisory id. A package URL is included when the finding has one. Two advisories on one package get two values. The installed version, CVSS score, aliases, and message are not included. |
 | Dependency or framework major lag | The rule id, the location, and the package or framework name. The name is the text before ` is <number> major versions behind`. A later count, or a newer latest version, does not change the value. If the message does not have that shape, the whole message is used. |
-| License that could not be resolved | The rule id, the location, the declared license text, and the message. The message names the package, so two packages in one manifest stay distinct. |
+| License that could not be resolved | The rule id, the location, the declared license text, and the message. The message names the package, so two packages in one manifest stay distinct. The same project type, package, resolved version, license id, and path are one result. |
 | Finding suppressed by `--baseline` | The baseline id for that rule and location. The key is unchanged. That id does not include an advisory id, so every suppressed result with that rule and location shares it. |
 | Infrastructure finding (`vg scan --iac`) | The finding id. Moving the block without changing the address does not change the value. |
 
@@ -5933,7 +5933,7 @@ Stderr lines look like `warning [VG_WARN_PARSE_FAILED]: …`. The code is the to
 
 `vg sbom export` prints the code on stderr. CycloneDX adds a `vibgrate:warningCode` property next to the existing warning property. SPDX adds an annotation whose comment is `warningCode=VG_WARN_…`. The warning sentences already stored on the document stay as they are.
 
-License findings keep the rule id `vibgrate/license-parse-failed` and also carry `warnCode`. CVSS findings keep `cvss-vector-parse-failed` and also carry `warnCode`.
+License findings keep the rule id `vibgrate/license-parse-failed` and also carry `warnCode`. The same project type, package, resolved version, license id, and source path are reported once in the text report, JSON, and SARIF. A different SPDX id, LicenseRef, or path stays a separate finding. CVSS findings keep `cvss-vector-parse-failed` and also carry `warnCode`.
 
 A truncated or invalid lockfile stops the command. Warning codes cover conditions that let the command continue.
 
