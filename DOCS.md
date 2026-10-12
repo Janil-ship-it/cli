@@ -1764,13 +1764,14 @@ vg evidence release device-firmware 1.0.0 --from sbom.cdx.json
 
 #### Package digests
 
-A package digest is a hash of that package's bytes. `vg sbom export` and `vg scan --format json` do not write one. Match the component on its purl. The fields are in [Component identity](#component-identity).
+A package digest is a hash of that package's bytes. `vg sbom export` copies a digest the lockfile already recorded. It does not download the package, and it does not recompute the hash. `vg scan --format json` does not write one. Match the component on its purl. The fields are in [Component identity](#component-identity).
 
 | Output | Field | Shape | What is written |
 | --- | --- | --- | --- |
-| CycloneDX `components[]` and `metadata.component` | `hashes` | An array of `{ "alg", "content" }` | The key is omitted. |
-| SPDX `packages[]` | `checksums` | An array of `{ "algorithm", "checksumValue" }` | The key is omitted. |
-| SPDX `packages[]` | `filesAnalyzed` | Boolean | `false`. The package files were not hashed. |
+| CycloneDX `components[]` | `hashes` | An array of `{ "alg", "content" }` | One entry per digest the lockfile recorded. Sorted by `alg`, then by `content`. The key is omitted when the lockfile recorded none. |
+| CycloneDX `metadata.component` | `hashes` | An array of `{ "alg", "content" }` | The key is omitted. The root is the application, not a locked package. |
+| SPDX `packages[]` | `checksums` | An array of `{ "algorithm", "checksumValue" }` | The same digests, with SPDX algorithm names (`SHA256`, not `SHA-256`). Sorted by `algorithm`, then by `checksumValue`. Omitted when there are none. |
+| SPDX `packages[]` | `filesAnalyzed` | Boolean | `false`. The package files were not hashed. The checksum, when present, is the lockfile's recorded value. |
 | Scan JSON `projects[].dependencies[]` | — | — | No `integrity`, `checksum`, `hash`, or `digest` key. |
 | CycloneDX document | `serialNumber` | `urn:uuid:` and a version-8 UUID | A document identifier. The third UUID group starts with `8`. |
 | SPDX document | `documentNamespace` | `https://vibgrate.com/spdx/<rootPath>/<version-8 UUID>` | A document identifier. `<rootPath>` is the scan root. |
@@ -1779,32 +1780,44 @@ A package digest is a hash of that package's bytes. `vg sbom export` and `vg sca
 
 A missing digest stays omitted. The export does not write `[]`, `null`, or `""` where `hashes` or `checksums` would go. It does not hash the package name, the purl, or the document id and store that string as a digest. When you need a hash of the bytes, hash the artifact you fetched.
 
-**Document identifier.** CycloneDX and SPDX each get their own version-8 UUID. The value is derived from the scan artifact, including its timestamp, and from the ordered component list, contributing projects, merge warnings, declared licenses, license-parse notes, and edges. The same inputs produce the same UUID. A later scan records a new timestamp, so the UUID changes. The UUID identifies that export. It is not a SHA-256 digest of the JSON file or of a package. Stability of the whole document is in [Several versions of one package](#several-versions-of-one-package).
+**Document identifier.** CycloneDX and SPDX each get their own version-8 UUID. The value is derived from the scan artifact, including its timestamp, and from the ordered component list, contributing projects, merge warnings, declared licenses, license-parse notes, edges, and the ordered digests on each component. The same inputs produce the same UUID. A later scan records a new timestamp, so the UUID changes. The UUID identifies that export. It is not a SHA-256 digest of the JSON file or of a package. Stability of the whole document is in [Several versions of one package](#several-versions-of-one-package).
 
 **Project and solution identifiers.** `projectId` is the first 16 hexadecimal characters of the SHA-256 of `<path>:<name>`, using that project's `path` and `name`. When the scan has a workspace DSN (`--dsn` or `VIBGRATE_DSN`), the input is `<path>:<name>:<workspace id>`. A local scan without a DSN uses path and name only. The same inputs produce the same id. `solutionId` is the same construction from the solution file's path and name. Each project in that solution copies the id to `projects[].solutionId`. An id already stored for that solution path in `.vibgrate/solutions.json` is the id the scan writes. These strings name the project or the solution.
 
 Two other strings in the same file are easy to misread as package digests. `vcs.sha` is the git commit the scan recorded. `baselineComparison.suppressed[].id` is present only when `--baseline` compared findings: the first 32 hexadecimal characters of the SHA-256 of the finding's rule and location.
 
-**Lockfile digests stay in the lockfile.** The reader that feeds `vg sbom export` keeps `package` and `version`, and dependency edges when that format records them. It drops the digest:
+**Lockfile digests on the component.** The reader that feeds `vg sbom export` keeps `package` and `version`, and dependency edges when that format records them. It also copies a digest when the value is a recognized algorithm and a hex or base64 encoding of that algorithm's usual length (MD5, SHA-1, SHA-256, SHA-384, SHA-512, SHA3-256, SHA3-384, SHA3-512, BLAKE2b-256, BLAKE2b-384, BLAKE2b-512, BLAKE3). Anything else in the field is left out.
 
-| Lockfile | Digest field that is not copied |
-| --- | --- |
-| `package-lock.json` | `integrity` |
-| `pnpm-lock.yaml` | `resolution.integrity` |
-| `Cargo.lock` | `checksum` |
-| `uv.lock` | `hash` |
-| `go.sum` | `h1:` |
+| Lockfile | Digest field | What is copied |
+| --- | --- | --- |
+| `package-lock.json` | `integrity` | Each Subresource Integrity token on that package (`sha256-…`, `sha512-…`). |
+| `pnpm-lock.yaml` | `resolution.integrity` | The same tokens. |
+| `yarn.lock` | `integrity` | The same tokens. |
+| `Cargo.lock` | `checksum` | The SHA-256 hex of the crate. |
+| `poetry.lock`, `uv.lock` | `hash` | Each labeled hash on that package block (`sha256:…`). |
+| `go.sum` | `h1:` on `<module> <version>` | The module zip, as SHA-256. |
 
-**Several digests, one component.** A lockfile can list more than one digest for one package. The export still writes one component for that ecosystem, name, and version. It does not add a row per digest. `hashes` and `checksums` are omitted, so there is no digest array and no digest order to keep stable. Component order stays the order in [Several versions of one package](#several-versions-of-one-package): Package URL when the component has one, otherwise the package name, then the version. Digest text is not part of that sort, and it is not part of the document id. Exporting the same scan artifact again, after a lockfile edit that changes only those digest strings and leaves names, versions, and edges alone, writes the same JSON, including `serialNumber` and `documentNamespace`.
+**Several digests, one component.** A lockfile can list more than one digest for one package. The export still writes one component for that ecosystem, name, and version. It does not add a row per digest. `hashes` and `checksums` list every accepted digest on that component. The array is sorted by algorithm name, then by the digest value. The comparison is code-point order, so it does not follow the lockfile text, the install path, or the order of projects. The same digests produce the same array on every run. An identical algorithm and value is written once.
 
-`go.sum` lists a module twice: `<module> <version> h1:…` and `<module> <version>/go.mod h1:…`. The `/go.mod` line is not a second component. Both `h1:` values are dropped. A `uv.lock` package block can carry more than one `hash`. Those values are dropped, and the block stays one component, in the same order as the other rows. An npm `integrity` string and a pnpm `resolution.integrity` string are not read, including when the string names more than one algorithm.
+```json
+"hashes": [
+  { "alg": "SHA-256", "content": "<sha256 value>" },
+  { "alg": "SHA-512", "content": "<sha512 value>" }
+]
+```
+
+That order is the same when the lockfile listed `sha512` before `sha256`. SPDX writes `SHA256` then `SHA512` in `checksums`, which is the same rule on the SPDX algorithm names.
+
+Component order stays the order in [Several versions of one package](#several-versions-of-one-package): Package URL when the component has one, otherwise the package name, then the version. Digest text is not part of that sort. It is part of the document id. A lockfile edit that changes only those digest strings changes `serialNumber`, `documentNamespace`, and the hash arrays, and leaves the component order in place.
+
+`go.sum` lists a module twice: `<module> <version> h1:…` and `<module> <version>/go.mod h1:…`. The `/go.mod` line is not a second component, and its hash is not a second digest of the module. A `uv.lock` or `poetry.lock` package block can carry more than one `hash`. Those values stay on the one component, in the order above. An npm or pnpm integrity string that names more than one algorithm is read the same way. `--no-transitive` does not read the lockfile, so the hash arrays are omitted with the lockfile-only rows.
 
 ```bash
 vg scan --offline --no-graph --format json --out scan.json
 vg sbom export --in scan.json --format cyclonedx --out sbom.cdx.json
 ```
 
-Both commands read and write local files. In `scan.json`, a dependency object has no digest key. In `sbom.cdx.json`, a component has no `hashes` key. Join the two on the purl from [Component identity](#component-identity).
+Both commands read and write local files. In `scan.json`, a dependency object has no digest key. In `sbom.cdx.json`, `hashes` is present only when the lockfile recorded a digest for that component, in the order above. Join the two on the purl from [Component identity](#component-identity).
 
 #### Declared licenses
 
@@ -1937,11 +1950,11 @@ repeat one identity.
 CycloneDX `serialNumber` and the SPDX `documentNamespace`. Those values are
 document identifiers. Each one is derived from the scan artifact — timestamp
 included — and from the ordered component list, contributing projects, merge
-warnings, declared licenses, license-parse notes, and edges. A lockfile digest
-is not an input, so a change that touches only that digest leaves the document
-the same. A later scan of the same tree records a new timestamp, so the
-document id changes. Purls and CycloneDX `bom-ref` values do not. Field shapes
-are in [Package digests](#package-digests).
+warnings, declared licenses, license-parse notes, edges, and the ordered
+digests. A lockfile edit that changes only a digest changes the hash arrays
+and the document id. It does not reorder components. A later scan of the same
+tree records a new timestamp, so the document id changes. Purls and CycloneDX
+`bom-ref` values do not. Field shapes are in [Package digests](#package-digests).
 
 **Known limitations:**
 
