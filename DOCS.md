@@ -2213,7 +2213,7 @@ By default, the scan writes `.vibgrate/scan_result.json`. Use `--no-local-artifa
 
 A truncated or syntactically invalid lockfile stops the scan before a dependency graph is built. The error names the file (for example `package-lock.json`, `pnpm-lock.yaml`, or `yarn.lock`) and tells you to regenerate it with your package manager. The message does not include the lockfile, and the process exits non-zero. A valid lockfile is scanned as before.
 
-`vg scan` does not follow symlinks while it indexes the tree. A skipped link is named once, as `warning [VG_WARN_SYMLINK_SKIPPED]`. See [Symlinks](#symlinks).
+`vg scan` does not follow symlinks while it indexes the tree. A skipped link is named once, as `warning [VG_WARN_SYMLINK_SKIPPED]`. See [Symlinks](#symlinks). Archive files (`.zip`, `.tar`, `.gz`, `.bz2`, `.7z`, `.rar`) are not opened during that walk.
 
 For offline drift scoring, pass `--package-manifest <file>` with a downloaded manifest bundle such as `https://github.com/vibgrate/manifests/latest-packages.zip`. The manifest shape, the fail-closed errors, and what offline mode skips are in [Offline scan with a package-version manifest](#offline-scan-with-a-package-version-manifest).
 
@@ -2239,7 +2239,7 @@ A lockfile that is truncated or not valid syntax still fails the command, includ
 
 #### Manifest input
 
-The file is JSON, or a ZIP whose root contains `package-versions.json`, `manifest.json`, or `index.json`. A ZIP is unpacked with the `unzip` command. The JSON is one object. These keys are the package ecosystems, and `runtimes` is an optional catalog of runtime versions:
+The file is JSON, or a ZIP whose root contains `package-versions.json`, `manifest.json`, or `index.json`. A ZIP is read in process. It is refused, before any member is inflated, when the file is over 256 MiB, when it declares more than 256 MiB uncompressed, or when it declares more than 10,000 entries. The error names the path and the limit. `VG_MAX_ARCHIVE_BYTES` and `VG_MAX_ARCHIVE_ENTRIES` raise those limits (`0` disables that one limit). The JSON is one object. These keys are the package ecosystems, and `runtimes` is an optional catalog of runtime versions:
 
 `npm`, `nuget`, `pypi`, `maven`, `rubygems`, `swift`, `go`, `cargo`, `composer`, `pub`, `hex`, `docker`, `helm`, `terraform`, `runtimes`
 
@@ -2809,7 +2809,7 @@ A truncated or syntactically invalid lockfile stops the build before source file
 | `--attestation <file>` | `.vibgrate/attestation.intoto.jsonl` | Where `--attest` writes, and where `--verify` reads |
 | `--pub <path>` | — | Public key PEM that pins the signer for `--verify` |
 
-`vg build` does not follow symlinks while it discovers files. A skipped link is named once, as `warning [VG_WARN_SYMLINK_SKIPPED]`. See [Symlinks](#symlinks). `.gitignore` and `--exclude` still apply.
+`vg build` does not follow symlinks while it discovers files. A skipped link is named once, as `warning [VG_WARN_SYMLINK_SKIPPED]`. See [Symlinks](#symlinks). `.gitignore` and `--exclude` still apply. Archive files (`.zip`, `.tar`, `.gz`, `.bz2`, `.7z`, `.rar`) are not opened during that walk.
 
 **Local by default — no git churn.** The first time vg writes into `.vibgrate/` it also creates `.vibgrate/.gitignore`, keeping the graph artifacts (`graph.json`, `graph.html`, `GRAPH_REPORT.md`, `facts.jsonl`, `mcp-navigation.json`) and the cache out of git — so builds, auto-refreshes, and MCP use never leave your branch dirty. Run `vg share` when you want the map committed for your team (it rewrites that ignore file). vg never touches an existing `.vibgrate/.gitignore`, so edit it (or leave it empty) to manage the ignores yourself.
 
@@ -3908,7 +3908,7 @@ vg module install relevance --force
 vg module remove hcs
 ```
 
-Installation fetches the module from the npm registry **as a plain tarball**, verifies its integrity, and unpacks it into the Vibgrate cache. Your project is never touched, and nothing from the tarball executes at install time. State is per-user, not per-repo, and your answer to the prompt is recorded — a decline is remembered, so nothing re-prompts on every run.
+Installation fetches the module from the npm registry **as a plain tarball**, verifies its integrity, and unpacks it into the Vibgrate cache. Your project is never touched, and nothing from the tarball executes at install time. The unpack stops when the tarball declares more than 10,000 entries or more than 256 MiB uncompressed. `VG_MAX_ARCHIVE_ENTRIES` and `VG_MAX_ARCHIVE_BYTES` raise those limits (`0` disables that one limit). State is per-user, not per-repo, and your answer to the prompt is recorded — a decline is remembered, so nothing re-prompts on every run.
 
 | Subcommand | Description |
 |------------|-------------|
@@ -5685,7 +5685,9 @@ A bad manifest stops the command (exit code 1) before the scan. The message name
 | A directory | `Package manifest is not a file: <path>. Pass a JSON or ZIP package-version manifest to --package-manifest.` |
 | Not a manifest | `Package manifest is not usable: <path>. Expected a JSON object of package versions, or a ZIP containing package-versions.json, manifest.json, or index.json.` |
 | ZIP has none of those files | `Package manifest is not usable: <path>. The ZIP must contain package-versions.json, manifest.json, or index.json.` |
-| ZIP and `unzip` is missing | `Package manifest is not readable: <path>. Reading a ZIP manifest needs the unzip command. Pass a JSON package-version manifest to --package-manifest, or install unzip.` |
+| ZIP over the size limit | `Refusing to read archive <path>: <bytes> bytes exceeds the 256 MiB limit. Exclude this path or pass a smaller archive, then run the command again. Set VG_MAX_ARCHIVE_BYTES to raise the limit (0 disables it).` |
+| ZIP whose uncompressed output exceeds the limit | `Refusing to read archive <path>: uncompressed output exceeds the 256 MiB limit. Exclude this path or pass a smaller archive, then run the command again. Set VG_MAX_ARCHIVE_BYTES to raise the limit (0 disables it).` |
+| ZIP over the entry limit | `Refusing to read archive <path>: it declares <count> entries, over the 10000-entry limit. Exclude this path or pass a smaller archive, then run the command again. Set VG_MAX_ARCHIVE_ENTRIES to raise the limit (0 disables it).` |
 
 ### npm registry check
 
