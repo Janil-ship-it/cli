@@ -1680,14 +1680,14 @@ vg sbom export --format spdx --out sbom.spdx.json
 | Created | `metadata.timestamp` is the artifact's `timestamp` | `creationInfo.created` is that same timestamp |
 | Scan root | `metadata.component` has `type` `application`, `bom-ref` `vibgrate-root`, and `name` set to the scan root. That component is not copied into `components` | There is no package for the scan root |
 | Package identity | `components[].purl`. When a purl is written, `bom-ref` is that purl | `packages[].externalRefs[]` with `referenceCategory` `PACKAGE-MANAGER`, `referenceType` `purl`, and `referenceLocator` set to the purl. `SPDXID` is `SPDXRef-Package-N` |
-| Dependency graph | `dependencies` is an array of `{ ref, dependsOn }`. `ref` is a `bom-ref`. The first entry is `vibgrate-root`. Every component is an entry after that, in the component order above. `dependsOn` lists child `bom-ref` values, or is `[]` when none were recorded for that component | `relationships` is an array of `{ spdxElementId, relatedSpdxElementId, relationshipType }`. `relationshipType` is `DEPENDS_ON`. Edges from the document use `SPDXRef-DOCUMENT`. A row is written only for a recorded edge. `SPDXID` values follow the component order above |
+| Dependency graph | `dependencies` is an array of `{ ref, dependsOn }`. `ref` is a `bom-ref`. The first entry is `vibgrate-root`. Every component is an entry after that, in the component order above. `dependsOn` lists child `bom-ref` values, or is `[]` when none were recorded for that component. Component `scope` is separate from this graph | `relationships` is an array of `{ spdxElementId, relatedSpdxElementId, relationshipType }`. A resolved edge is `DEPENDS_ON`. A scanned development dependency is `DEV_DEPENDENCY_OF`. A scanned optional dependency is `OPTIONAL_DEPENDENCY_OF`. `SPDXID` values follow the component order above |
 | Licenses | `licenses` is present when the declared license can be written, and absent when it cannot | `licenseDeclared` is set on every package. `licenseConcluded` is `NOASSERTION` on every package. `hasExtractedLicensingInfos` is present when a `LicenseRef-…` is used. Every package has `downloadLocation` `NOASSERTION` and `filesAnalyzed` `false` |
 
 `dataLicense` `CC0-1.0` is the SPDX license for the document data. Package licenses stay on `licenseDeclared`.
 
 The UUID inside `serialNumber` and the UUID inside `documentNamespace` are different values. The hash seed starts with the format name, so the two ids differ for the same artifact. The same artifact and the same lockfiles produce the same id for that format on every run. A later scan records a new timestamp, so both ids change. The rest of the seed is under [Several versions of one package](#several-versions-of-one-package).
 
-When the lockfile records no edges, both documents leave the graph member out. CycloneDX omits `dependencies`. SPDX omits `relationships`. npm `package-lock.json` v2/v3 records edges. pnpm and yarn list the components and leave the graph member out.
+When the lockfile records no edges, CycloneDX omits `dependencies`. SPDX omits `DEPENDS_ON`. A scanned development or optional dependency still produces `DEV_DEPENDENCY_OF` or `OPTIONAL_DEPENDENCY_OF`. npm `package-lock.json` v2/v3 records edges. pnpm and yarn list the components and leave those edges out.
 
 Purl rules, the fallback `bom-ref`, and how a scan artifact joins to these fields are in [Component identity](#component-identity).
 
@@ -1938,10 +1938,12 @@ manifest declared stays in the document as `transitive`. On a transitive row,
 first sorted project path that listed it). `vibgrate:projects` still lists
 every project whose lockfile listed that identity.
 
-That value is `direct` or `transitive`. Production, development, and optional
-are recorded or dropped before export, and the CycloneDX `scope` member is
-omitted. The mapping, a worked example, and the gaps are in
-[Dependency scope](./docs/sbom-dependency-scope.md).
+That value is `direct` or `transitive`. A scanned `devDependencies` row also
+sets CycloneDX component `scope` to `excluded` and writes SPDX
+`DEV_DEPENDENCY_OF`. A scanned `optionalDependencies` row sets `scope` to
+`optional` and writes `OPTIONAL_DEPENDENCY_OF`. Production, peer, and
+lockfile-only rows omit component `scope`. The mapping, a worked example,
+and the gaps are in [Dependency scope](./docs/sbom-dependency-scope.md).
 
 ```bash
 vg sbom export --format cyclonedx --out sbom.cdx.json
@@ -1949,9 +1951,10 @@ vg sbom export --no-transitive --format cyclonedx --out sbom-direct.cdx.json
 ```
 
 `--no-transitive` keeps manifest-declared rows only. Lockfile-only versions are
-absent, and so is the dependency graph. A consumer that filters to
-`vibgrate:scope=direct` sees the same gap: other installed versions of that
-package are still in the full document, marked `transitive`.
+absent, and so is the CycloneDX dependency graph. SPDX still writes
+`DEV_DEPENDENCY_OF` and `OPTIONAL_DEPENDENCY_OF` for those rows. A consumer
+that filters to `vibgrate:scope=direct` sees the same gap: other installed
+versions of that package are still in the full document, marked `transitive`.
 
 **Order.** CycloneDX `components`, SPDX `packages`, and the package entries in
 CycloneDX `dependencies` share one order. A component with a Package URL sorts
@@ -1976,9 +1979,9 @@ repeat one identity.
 CycloneDX `serialNumber` and the SPDX `documentNamespace`. Those values are
 document identifiers. Each one is derived from the scan artifact — timestamp
 included — and from the ordered component list, contributing projects, merge
-warnings, declared licenses, license-parse notes, edges, and the ordered
-digests. A lockfile edit that changes only a digest changes the hash arrays
-and the document id. It does not reorder components. A later scan of the same
+warnings, declared licenses, license-parse notes, the development or optional
+mark, edges, and the ordered digests. A lockfile edit that changes only a
+digest changes the hash arrays and the document id. It does not reorder components. A later scan of the same
 tree records a new timestamp, so the document id changes. Purls and CycloneDX
 `bom-ref` values do not. Field shapes are in [Package digests](#package-digests).
 
@@ -2009,7 +2012,10 @@ tree records a new timestamp, so the document id changes. Purls and CycloneDX
   later list is dropped and `vibgrate:mergeWarning` names the drop. The
   CycloneDX root `dependsOn` and the SPDX document `DEPENDS_ON` relationships
   are the scan-root lockfile's direct dependencies, or the first project path
-  that has a lockfile when the root has none. A version that exists only in
+  that has a lockfile when the root has none. A scanned development or optional
+  dependency adds `DEV_DEPENDENCY_OF` or `OPTIONAL_DEPENDENCY_OF` from that
+  package to `SPDXRef-DOCUMENT`, including when the lockfile left it off the
+  root edge list. A version that exists only in
   another lockfile is still a component. Its `dependsOn` comes from that
   lockfile when the format records edges. When the document already has edges
   from another lockfile and this format does not record them, `dependsOn` is
