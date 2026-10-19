@@ -2206,7 +2206,7 @@ document root's edges are the scan-root lockfile's direct dependencies.
 The primary command. Scans your project for upgrade drift.
 
 ```bash
-vg scan [path] [--vulns] [--full] [--iac] [--format text|json|sarif|md] [--out <file>] [--junit <file>] [--fail-on warn|error|architecture-finding|architecture-warning] [--offline] [--package-manifest <file>] [--no-local-artifacts] [--max-privacy] [--baseline <file>] [--drift-budget <score>] [--drift-worsening <percent>] [--changed-only] [--concurrency <n>]
+vg scan [path] [--vulns] [--full] [--iac] [--format text|json|sarif|md] [--out <file>] [--junit <file>] [--fail-on warn|error|architecture-finding|architecture-warning] [--fail-on-epss <threshold>] [--offline] [--package-manifest <file>] [--no-local-artifacts] [--max-privacy] [--baseline <file>] [--drift-budget <score>] [--drift-worsening <percent>] [--changed-only] [--concurrency <n>]
 ```
 
 | Flag | Default | Description |
@@ -2223,6 +2223,7 @@ vg scan [path] [--vulns] [--full] [--iac] [--format text|json|sarif|md] [--out <
 | `--concurrency <n>` | `8` | Max concurrent npm registry calls |
 | `--drift-budget <score>` | — | Fitness gate: fail if drift score is above this budget |
 | `--drift-worsening <percent>` | — | Fitness gate: fail if drift worsens by more than % vs baseline |
+| `--fail-on-epss <threshold>` | — | Exit 2 when any advisory EPSS score is at or above this probability (0–1). A missing score is not compared and is not treated as 0. Overrides `failOnEpss` in the project config. See [EPSS gate](#epss-gate) |
 | `--summary-out <file>` | — | Also write a small JSON summary for CI steps: `driftScore`, `riskLevel`, `components`, `delta` / `baselineScore` when `--baseline` is set, and `driftBudget`. `driftBudget` is the verdict (`source`, `mode`, `withinBudget`, `blocking`, `rules`), or `null` when no budget is set. A budget from `--drift-budget` or `--drift-worsening` has `source` `flags` and replaces the project config. An unmeasured score is `null`, never `0`, and is not compared. Written before any gate can fail the run |
 | `--push` | — | Upload scan artifact to Vibgrate Cloud after a successful scan |
 | `--dsn <dsn>` | `VIBGRATE_DSN` env | DSN used for `--push` authentication |
@@ -2396,6 +2397,29 @@ Machine-readable JSON (`vg scan --format json`, and the `.vibgrate/scan_result.j
 | `kev` | boolean | Whether that advisory data marks the CVE in the CISA Known Exploited Vulnerabilities catalog |
 
 A value that is not in the source is omitted. It is never written as `0` or `false` to mean "unknown". A present `0` is a real EPSS score, and a present `false` means the data explicitly says the CVE is not in the catalog. Text and SARIF findings are unchanged.
+
+#### EPSS gate
+
+`--fail-on-epss <threshold>` exits `2` when any advisory on this scan has an EPSS score at or above the threshold. The threshold is a probability from 0 to 1. A score equal to the threshold fails. A score below it does not.
+
+A missing score is not compared, and it is not treated as 0. An advisory with no `epss` field stays out of the gate. A present `0` is a real score: `--fail-on-epss 0` fails on it, and `--fail-on-epss 0.01` does not.
+
+The gate reads the advisories `vg scan --vulns` (or `vg scan --full`) already recorded. It does not contact an EPSS service. Offline and `--package-manifest` scans use the scores in that bundle. When there is no score to compare — vulnerability detection was not requested, the advisory feed could not be reached, or every advisory omitted `epss` — the command prints `EPSS is absent; --fail-on-epss <threshold> was not compared.` and exits `0`. A vulnerability pass that ran and found no advisories passes: nothing is at or above the threshold.
+
+A value that is not a number, or a number outside 0 to 1, stops the command before the scan. The exit code is `1`. The error line is `error: --fail-on-epss must be a number from 0 to 1.`
+
+`failOnEpss` in `.vibgrate/config.yml` or `vibgrate.config.json` is the same threshold. Passing `--fail-on-epss` replaces that setting for the run. The config value is a number from 0 to 1. A wrong type stops the scan and names the key. The failure line does not include the config value that was rejected.
+
+The failure line is `Failing: 1 advisory at or above EPSS <threshold>.` (or `N advisories`). Each matching advisory is listed on stderr as `ecosystem package@version  id  EPSS score`. `--fail-on` runs first, then this gate, then `--drift-budget` and `--drift-worsening`. The first failure exits `2`. With `--junit`, the `gates` suite includes a `fail-on-epss` case: a `<failure>` on a breach, a `<skipped>` case when no score was compared, and a passing case when every compared score is below the threshold. The XML is written, then the process exits `2`.
+
+```bash
+vg scan --vulns --fail-on-epss 0.1
+```
+
+```yaml
+# .vibgrate/config.yml
+failOnEpss: 0.1
+```
 
 `vg scan --vulns --offline` and `--package-manifest` read these fields from the local bundle only. They do not contact an EPSS or KEV service. An online scan reads them from the OSV advisory document when that document already includes them, and does not make a separate exploitability request.
 
@@ -4882,8 +4906,11 @@ Passing either flag ignores [`driftBudget`](#drift-budget) in the project config
 | `--drift-worsening 5`, rise of 5% or less, or the score did not rise | `0` |
 | `--fail-on error`, at least one error-level finding | `2` |
 | `--fail-on warn`, at least one warning or error finding | `2` |
+| `--fail-on-epss 0.1`, an advisory EPSS score at or above 0.1 | `2` |
+| `--fail-on-epss 0.1`, every compared score below 0.1 | `0` |
+| `--fail-on-epss`, no EPSS score to compare | `0` |
 
-Exit `2` is `GATE_FAILED`. See [Exit Codes](#exit-codes).
+Exit `2` is `GATE_FAILED`. See [Exit Codes](#exit-codes). `--fail-on-epss` uses the same code. A missing EPSS score is not compared and is not treated as 0. See [EPSS gate](#epss-gate).
 
 An unmeasured score is absent. It is not compared, and it is not treated as 0. The command prints `DriftScore is absent; --drift-budget <n> was not compared.` or `DriftScore is absent; --drift-worsening was not compared.` and exits `0`. A measured 0 is a real score and is compared. `vg baseline` prints `Baseline score: n/a` when the snapshot's score is null. In JSON the score is `null`; in text it is `n/a`.
 
@@ -5181,7 +5208,7 @@ The same findings and gates always produce the same bytes. Case order is fixed, 
 | `findings` | Always | One case per drift finding. `classname` is `vg.findings`. `name` is `{ruleId} {location}` (` #2`, ` #3`, … on ties). No findings → one passing case, `no findings`. |
 | `architecture` | `--fail-on architecture-finding` or `architecture-warning` | One failure per boundary row (`classname` `vg.architecture`), a passing `architecture` case when the gate is clean, or one failure when the gate could not run. |
 | `security` | `--fail-on iac-finding` or `security-finding` | One case per security finding when the packs ran (`classname` `vg.security`). Findings below the severity are `<skipped>`. A passing `security` case when there are none. One failure when the gate could not run. |
-| `gates` | A drift budget was judged | `drift-budget` / `drift-worsening` for the flags, or `drift-budget maxScore` and `drift-budget maxWorseningPercent` for [`driftBudget`](#drift-budget) in project config. |
+| `gates` | A drift budget or an EPSS threshold was judged | `drift-budget` / `drift-worsening` for the DriftScore flags, or `drift-budget maxScore` and `drift-budget maxWorseningPercent` for [`driftBudget`](#drift-budget) in project config. `fail-on-epss` for [`--fail-on-epss`](#epss-gate) or `failOnEpss`. |
 
 A finding is a `<failure>` only when its level fails the drift gate you set. Anything else is `<skipped>` (present, not gating):
 
@@ -5191,7 +5218,7 @@ A finding is a `<failure>` only when its level fails the drift gate you set. Any
 | `warning` | skipped | failure | skipped |
 | `note` | skipped | skipped | skipped |
 
-Budget cases follow the same exit rules as the CLI. `--drift-budget` / an enforced `driftBudget` breach is a `<failure>`. A score that was not measured, a worsening limit with no `--baseline`, and a warn-mode or shadow breach are `<skipped>` — they do not fail the scan. Every requested gate is included, including gates after the one that stopped the process. The confirmation line goes to stderr, so `--format json` on stdout stays intact. See [Exit Codes](#exit-codes): the XML is written, then the process exits `2` when a gate fails. SARIF stays the code-scanning artifact; see [SARIF](#sarif).
+Budget cases follow the same exit rules as the CLI. `--drift-budget` / an enforced `driftBudget` breach is a `<failure>`. A score that was not measured, a worsening limit with no `--baseline`, and a warn-mode or shadow breach are `<skipped>` — they do not fail the scan. `fail-on-epss` is a `<failure>` when an advisory score is at or above the threshold, a `<skipped>` case when no EPSS score was compared, and a passing case when every compared score is below it. A missing score is skipped, not compared as 0. Every requested gate is included, including gates after the one that stopped the process. The confirmation line goes to stderr, so `--format json` on stdout stays intact. See [Exit Codes](#exit-codes): the XML is written, then the process exits `2` when a gate fails. SARIF stays the code-scanning artifact; see [SARIF](#sarif).
 
 ```bash
 vg scan --format sarif --out vibgrate.sarif --junit vibgrate.junit.xml --fail-on error --drift-budget 40
@@ -5979,7 +6006,7 @@ CI and agents branch on these, so they are a stable contract.
 | ---- | --------------------- | ---------------------------------------------------------------------------------------- |
 | `0`  | `OK`                  | Success                                                                                    |
 | `1`  | `ERROR`               | Runtime error                                                                              |
-| `2`  | `GATE_FAILED`         | A gate failed: `--fail-on` threshold exceeded, a drift budget breached, `vg hcs gate` regression, `vg bisect --assert` unsatisfied, or `vg build --verify` rejected the attestation |
+| `2`  | `GATE_FAILED`         | A gate failed: `--fail-on` threshold exceeded, `--fail-on-epss` matched an advisory, a drift budget breached, `vg hcs gate` regression, `vg bisect --assert` unsatisfied, or `vg build --verify` rejected the attestation |
 | `3`  | `NOT_FOUND`           | The thing asked for does not exist (unknown symbol, no version history, an attestation path you named, …) |
 | `4`  | `NON_DETERMINISTIC`   | A verification found output that is not reproducible, including the `vg build --verify` self-check |
 | `5`  | `USAGE_ERROR`         | Bad invocation: unknown command, invalid flag value, missing argument, a signing key that is missing or not Ed25519, or a retired name such as `vg attest` |
