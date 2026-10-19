@@ -355,7 +355,9 @@ When available, the request also includes the repository name and commit. Your
 source stays on your machine. `--no-apply` and `--dry-run` still call the
 planner. They do not run the package manager. Applying does: it runs the
 project's own package manager, which reaches the registries that manager is
-configured to use.
+configured to use. An advisory stays open when its upgrade does not land:
+blocked by policy, blocked by a peer conflict, no fixed version is published,
+or the install fails. A failed install restores the manifest and lockfile.
 
 ```bash
 vg login                     # once; stores the DSN locally
