@@ -531,7 +531,7 @@ vg report [--in <file>] [--format md|text|json|html]
 `html` writes one self-contained page from that same artifact. It does not call the network and does not load external files. The page opens with a summary:
 
 - DriftScore and the four component scores. A missing score is `n/a`. A measured `0` stays `0`.
-- Counts by severity for vulnerability findings and for security findings. A check that did not run stays "Not scanned" rather than a row of zeros. A check that finished with nothing to report shows zeros.
+- Counts by severity for vulnerability findings and for security findings. A check that did not run stays "Not scanned" rather than a row of zeros. That includes a security section whose packs are all `unavailable` and which has no findings. A check that finished with nothing to report shows zeros.
 - When a finding carries `details.fixedVersions`, how many of those findings name a fix.
 - A **Fix available only** checkbox. It starts unchecked, so the tables show every finding. Checking it hides findings that do not name a fix version. The page file still contains every finding, and the checkbox does not call the network.
 - Links to the full tables under the summary: vulnerabilities, security findings, and the other findings.
