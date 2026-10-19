@@ -1656,6 +1656,8 @@ vg sbom vex [--from <file>] [--statement <json>...] [--product <ref>] [--out <fi
 
 Use this to treat SBOMs as operational intelligence instead of static compliance output.
 
+How `direct` and `transitive` differ from production, development, optional, and peer, and which of those signals CycloneDX and SPDX record or leave out, is in [Dependency scope](./docs/sbom-dependency-scope.md).
+
 #### Choosing CycloneDX or SPDX
 
 `vg sbom export` writes one JSON document. `--format` accepts `cyclonedx` or `spdx`, compared without regard to case. The default is `cyclonedx`. Any other value prints `Invalid SBOM format. Use cyclonedx or spdx.` and the process exits 1.
