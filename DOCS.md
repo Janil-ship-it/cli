@@ -5289,6 +5289,12 @@ Vibgrate reads the first it finds in the order `.vibgrate/config.yml`,
 `.vibgrate/config.yaml`, `vibgrate.config.ts`, `vibgrate.config.js`,
 `vibgrate.config.json`, and never merges two. YAML and JSON take exactly the
 same settings; `vg doctor` names any config file that is present but ignored.
+When more than one of those YAML or JSON files sets `driftBudget` and the
+values differ, `vg` prints one warning on stderr and `vg doctor` repeats it.
+The warning names each file, the `driftBudget` value in that file, and which
+file is the config in use (the first one in the lookup order). The other
+files are not read. The same settings in a different key order do not warn.
+Only the `driftBudget` value is printed, not the rest of the file.
 
 ### Drift budget
 
