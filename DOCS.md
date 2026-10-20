@@ -2744,6 +2744,30 @@ vg why src/orders.ts:42
 - **The hook never blocks a commit.** If anything fails, the commit goes ahead without a trailer. Merge and squash messages are left alone.
 - **An existing hook is never replaced.** If another tool already owns `prepare-commit-msg`, `vg review trailer on` changes nothing and prints the one line to add to that hook.
 
+The trailer is one line in the commit message. `git log` prints it in the body:
+
+```text
+Vibgrate-Session: <id>
+```
+
+To print only the id:
+
+```bash
+git log -1 --format='%(trailers:key=Vibgrate-Session,valueonly)'
+```
+
+When the commit has no trailer, that format prints nothing. `vg why <file:line>` then prints:
+
+```text
+  no Vibgrate-Session trailer on this commit — turn it on for future commits with `vg review trailer on`
+```
+
+A line that is not committed yet prints:
+
+```text
+  not committed yet, or git could not blame this line
+```
+
 `vg why <file:line>` blames the line, reads the commit's trailers and shows each session's title and model. It then lists the requests in that session that touched the file. The agent's own answer is shown as its account, unverified. A session that ran on another machine is named, but its contents are not shown. `vg review trailer off` removes the hook, and `vg review trailer status` shows whether it is on. Both take `--json`.
 
 **Sessions that ran on another machine.** A session stays where it ran, so a teammate's `vg why` shows only its id. To share the sessions behind your commits with your Vibgrate Cloud workspace:
@@ -2756,11 +2780,38 @@ vg why src/orders.ts:42 --cloud      # a teammate reads them back
 ```
 
 - **Opt-in on both sides.** Sessions are sent only when you run `push`. Vibgrate Cloud stores them only when a workspace admin has turned on Agent provenance under Source control. It is off by default.
-- **What is sent:** per turn, the request, the agent's summary, the repo-relative files it changed and a timestamp. File contents, diffs and attachments are never sent.
+- **Nothing leaves this machine** unless you run `vg review trailer push` or `vg why <file:line> --cloud`. `vg why <file:line>` without `--cloud` stays here. `--offline` and `--local` refuse both network commands before a request. The process exits 5. A dry run, and a push that has nothing to send, stay on this machine even with `--offline`.
+- **What is sent, and what is not.** The commit stores only the session id. `vg review trailer push` sends session content: the title, the provider, the model, and for each turn the request, the agent's summary, the repo-relative paths it changed, and a timestamp. It does not send file contents, diffs, or attachments. `vg why <file:line> --cloud` sends the repository key and the session ids, and receives that stored content. It does not upload the session from this machine.
 - **Credentials:** they are masked before sending. A session that still carries one is not sent, and `push` says which.
 - **Retention:** 365 days from the first upload. Turning the setting off deletes every stored session at once.
 
 Both commands use your DSN (`vg login`, `VIBGRATE_DSN` or `--dsn`).
+
+With `--offline` or `--local`, stderr is:
+
+```text
+error: `--cloud` needs the network — drop `--offline` (or `--local`) to read a shared session, or drop `--cloud` to read only sessions on this machine
+error: `vg review trailer push` needs the network — drop `--offline` (or `--local`) to share sessions, or leave the push off to keep them on this machine
+```
+
+When no commit in the range carries a trailer, `vg review trailer push` prints this and sends nothing. With `--base origin/main` the range in that sentence is `origin/main..HEAD`.
+
+```text
+  no Vibgrate-Session trailer on commits no remote branch contains yet — nothing was sent. `vg review trailer on` adds the trailer to commits made after you turn it on.
+```
+
+When `--cloud` reaches Vibgrate Cloud and the session was not shared, stderr is:
+
+```text
+  VG Code session <id> is not on this machine and was not shared to Vibgrate Cloud (`vg review trailer push` where it ran)
+```
+
+When the workspace has not turned on Agent provenance, a lookup says nothing was read. A push says nothing was uploaded.
+
+```text
+error: this workspace does not accept agent provenance — a workspace admin can turn on Agent provenance in Vibgrate Cloud settings; nothing was read
+error: this workspace does not accept agent provenance — a workspace admin can turn on Agent provenance in Vibgrate Cloud settings; nothing was uploaded
+```
 
 ---
 
