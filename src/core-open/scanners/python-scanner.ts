@@ -140,6 +140,11 @@ interface PythonDependency {
   spec: string;
   /** Normalised name for PyPI lookup (lowercase, hyphens) */
   normalisedName: string;
+  /**
+   * Manifest section. Absent means `dependencies`. A Poetry inline table
+   * with `optional = true` sets `optionalDependencies`.
+   */
+  section?: 'dependencies' | 'optionalDependencies';
 }
 
 /**
@@ -212,6 +217,16 @@ interface PyProjectToml {
 }
 
 /**
+ * True when a Poetry inline table sets `optional = true`.
+ * `optional = false` and a quoted version spec stay required.
+ */
+function poetryInlineOptional(line: string): boolean {
+  const table = /\{([^}]*)\}/.exec(line);
+  if (!table?.[1]) return false;
+  return /(?:^|[,{\s])optional\s*=\s*true\b/.test(table[1]);
+}
+
+/**
  * Very lightweight TOML parser — handles the subset we care about:
  * [project] name, requires-python, dependencies array,
  * [tool.poetry.dependencies] table.
@@ -256,7 +271,16 @@ function parsePyprojectToml(content: string): PyProjectToml {
         }
         const ver = kv[2] ?? kv[3] ?? '';
         const normalisedName = name.toLowerCase().replace(/[_.]+/g, '-');
-        result.dependencies.push({ name, spec: ver ? `==${ver}` : '', normalisedName });
+        // Quoted specs stay required. `optional = true` is read only from an
+        // inline table (`psycopg = { version = "^3.1", optional = true }`).
+        // The `python` key continued above and is not a package row.
+        const optional = kv[3] !== undefined && poetryInlineOptional(line);
+        result.dependencies.push({
+          name,
+          spec: ver ? `==${ver}` : '',
+          normalisedName,
+          ...(optional ? { section: 'optionalDependencies' as const } : {}),
+        });
       }
     }
   }
@@ -529,7 +553,7 @@ async function scanOnePythonProject(
 
     dependencies.push({
       package: dep.name,
-      section: 'dependencies',
+      section: dep.section ?? 'dependencies',
       currentSpec: dep.spec || '*',
       resolvedVersion,
       latestStable,
