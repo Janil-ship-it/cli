@@ -460,6 +460,8 @@ One scan gives you:
 
 SARIF writes one result per package and advisory (`vg scan --vulns --format sarif`). Every result includes `partialFingerprints["vg/finding-id/v1"]`, so an unchanged finding keeps the same code-scanning alert. The advisory's own id is the primary id. CVE and other aliases stay on that result. A second code-scanning alert is expected when the scan kept two advisory ids, including when those ids list each other as aliases. Field layout, result order, and what the fingerprint is made from: [DOCS.md](./DOCS.md#advisories-with-several-ids) and [DOCS.md](./DOCS.md#result-fingerprints).
 
+JSON (`vg scan --vulns --format json`, and `.vibgrate/scan_result.json`) writes one finding for a package and version when those ids alias each other, including through a third id. The finding id is the lowest CVE in the group when any linked id is a CVE, and the lowest advisory id when none is. One advisory keeps its own id. `aliases` lists the other ids, sorted. `--offline --package-manifest` groups the same way. The id rule is in [DOCS.md](./DOCS.md#advisory-alias-groups-in-json).
+
 ```bash
 vg scan --vulns                 # drift score + known vulnerabilities
 vg scan --full                  # drift + vulnerabilities + a banned-dependency report

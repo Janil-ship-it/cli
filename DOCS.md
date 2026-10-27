@@ -2569,7 +2569,7 @@ The fail-closed path is covered by `src/reporting/commands/scan-package-manifest
 
 #### Determinism
 
-The same tree and the same manifest produce the same findings order and the same advisory ids. JSON lists every finding by path (`location`), then rule id, then advisory id, then package URL when the finding carries an ecosystem and a package name. Alias lists on a finding are sorted. The text report prints errors, then warnings, then notes, and within a level it uses that same path order, so the terminal stays readable. SARIF keeps drift findings first. Vulnerability results then follow ecosystem, package name, and installed version, and within a package severity — critical, high, moderate, low, unknown — and then advisory id. That id is the `id` from the manifest. JSON records it as `details.advisoryId`. The order of keys in the manifest file does not change the result. `timestamp` and `durationMs` on the scan artifact still change between runs. In a git checkout, an exposure window's day count follows the scan date. The advisory id and the finding order stay the same.
+The same tree and the same manifest produce the same findings order and the same advisory ids. JSON lists every finding by path (`location`), then rule id, then advisory id, then package URL when the finding carries an ecosystem and a package name. Alias lists on a finding are sorted. Advisories that alias each other, including through a third id, are one JSON finding. The id rule is under [Advisory alias groups in JSON](#advisory-alias-groups-in-json). The text report prints errors, then warnings, then notes, and within a level it uses that same path order, so the terminal stays readable. SARIF keeps drift findings first. Vulnerability results then follow ecosystem, package name, and installed version, and within a package severity — critical, high, moderate, low, unknown — and then advisory id. That id is the `id` from the manifest. JSON records it as `details.advisoryId`. The order of keys in the manifest file does not change the result. `timestamp` and `durationMs` on the scan artifact still change between runs. In a git checkout, an exposure window's day count follows the scan date. The advisory id and the finding order stay the same.
 
 Those string keys, and the package-name tie-break on dependency rows inside a project, compare by UTF-16 code unit. SARIF results follow that finding order. Degrade-and-continue warnings are ordered by code, then message, the same way. `LANG` and `LC_ALL` do not change the JSON or the SARIF.
 
@@ -2610,7 +2610,23 @@ Maven scopes, Maven profiles, and Gradle configurations do not all become depend
 
 `vg scan --vulns` matches your installed dependencies against the public OSV database and records each known vulnerability — advisory id and CVE, severity, CVSS, and the fixing version — in the scan artifact, as findings, and in SARIF. Supply advisories in a `--package-manifest` bundle to run it offline. The manifest shape, the exit code `1` errors, and the offline limits are in [Offline scan with a package-version manifest](#offline-scan-with-a-package-version-manifest).
 
-SARIF from that scan is one result per package and advisory. How a GHSA, a CVE, and other aliases share that result, and when a second code-scanning alert is expected, is under [Advisories with several ids](#advisories-with-several-ids).
+SARIF from that scan is one result per package and advisory. How a GHSA, a CVE, and other aliases share that result, and when a second code-scanning alert is expected, is under [Advisories with several ids](#advisories-with-several-ids). JSON groups those linked ids; the rule is under [Advisory alias groups in JSON](#advisory-alias-groups-in-json).
+
+#### Advisory alias groups in JSON
+
+JSON from `vg scan --vulns` (`--format json`, and `.vibgrate/scan_result.json`) writes one finding per alias group for a package and version. Advisories that share an id are one group. The link can run through a third id: when A lists B and B lists C, A, B, and C are one finding. `--offline` and `--package-manifest` use the same grouping. The `vulns` entries in the manifest are the local advisory corpus for that run.
+
+The group id is stable:
+
+| Situation | `details.advisoryId` and `advisories[].id` |
+| --------- | ------------------------------------------ |
+| One advisory, including when it lists CVE, GHSA, or OSV aliases | That advisory's own id |
+| Two or more linked advisories, and any id in the group starts with `CVE-` | The lowest `CVE-` id in the group |
+| Two or more linked advisories, and no id in the group is a CVE | The lowest advisory id in the group |
+
+Lowest means UTF-16 code-unit order, the same order as the rest of the JSON. `aliases` lists the other ids in the group, in that order. Severity, CVSS, and fixed versions come from the advisory whose id is the group id. When the group id was only an alias, they come from the advisory with the lowest id. A second run of the same tree and the same manifest writes the same group. `timestamp` and `durationMs` still change between runs.
+
+SARIF writes one result per advisory id the scan read. That file is described under [Advisories with several ids](#advisories-with-several-ids).
 
 Machine-readable JSON (`vg scan --format json`, and the `.vibgrate/scan_result.json` artifact) lists each advisory under `extended.vulnerabilities.packages[].advisories`. Match the package on `ecosystem`, `package`, and `version` — the same identity `vg sbom export` writes as a purl. See [Component identity](#component-identity). A CDN or git URL in the lockfile does not retarget that ecosystem. See [CDN and non-registry lockfile resolutions](./docs/non-registry-lockfile-resolutions.md). When the advisory data used for that scan already carries exploitability, the same object includes these optional fields:
 
