@@ -175,7 +175,7 @@ The full table — finding gates, budget flags, `warn` / `enforce` / `shadow`, p
 
 `--fail-on warn` **fails** the job (exit 2) when a warning or error finding exists. `driftBudget.mode: warn` **does not**. That mode prints a breached budget and exits 0. `shadow` reports only and exits 0. `enforce` exits 2.
 
-`--drift-budget` and `--drift-worsening` always exit 2 on a breach, and they ignore `driftBudget` in the project config. A score equal to the budget passes. A DriftScore that was not measured does not fail either flag (it is absent, not 0). `--drift-worsening` without `--baseline` exits 2 when a score was measured. The same worsening key in config, with no baseline, is not evaluated and does not fail.
+`--drift-budget` and `--drift-worsening` always exit 2 on a breach, and they ignore `driftBudget` in the project config. A score equal to the budget passes. A DriftScore that was not measured does not fail either flag (it is absent, not 0). `--drift-worsening` without `--baseline` is not compared and exits 0 when a score was measured. With `--baseline` set and no numeric delta, it exits 2. The same worsening key in config, with no baseline, is not evaluated and does not fail.
 
 Do not set `continue-on-error` on the gate step. Exit 2 is what blocks the merge. Upload SARIF or the JSON report with `if: always()` — the file is already written when the gate exits.
 

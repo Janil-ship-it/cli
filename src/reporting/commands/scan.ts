@@ -20,7 +20,12 @@ import {
 } from '../../core-open/index.js';
 import { compareCodeUnits } from '../../core-open/utils/code-unit.js';
 import { writeScanSummary } from '../scan-summary.js';
-import { compareDriftBudget, evaluateConfigDriftBudget } from '../drift-budget-gate.js';
+import {
+  compareDriftBudget,
+  DRIFT_WORSENING_BASELINE_UNUSABLE,
+  DRIFT_WORSENING_NO_BASELINE,
+  evaluateConfigDriftBudget,
+} from '../drift-budget-gate.js';
 import { advisoriesForEpssGate, epssAdvisoryRow, evaluateEpssGate, parseEpssThreshold } from '../epss-gate.js';
 import {
   ARCHITECTURE_NEEDS_GRAPH,
@@ -893,6 +898,7 @@ export const scanCommand = new Command('scan')
           flagBudget: scanOpts.driftBudget,
           flagWorseningPercent: scanOpts.driftWorseningPercent,
           configRaw,
+          baseline: scanOpts.baseline,
         });
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
@@ -968,7 +974,12 @@ export const scanCommand = new Command('scan')
         gateCases.push(driftBudgetFlagCase(measuredDrift, scanOpts.driftBudget));
       }
       if (scanOpts.driftWorseningPercent !== undefined) {
-        gateCases.push(driftWorseningFlagCase(measuredDrift, artifact.delta, scanOpts.driftWorseningPercent));
+        gateCases.push(driftWorseningFlagCase(
+          measuredDrift,
+          artifact.delta,
+          scanOpts.driftWorseningPercent,
+          scanOpts.baseline,
+        ));
       }
       if (scanOpts.driftBudget === undefined && scanOpts.driftWorseningPercent === undefined) {
         // A config read failure must not run ahead of the finding gates below.
@@ -1158,8 +1169,11 @@ export const scanCommand = new Command('scan')
       if (measuredDrift === null) {
         console.error(chalk.yellow('\nDriftScore is absent; --drift-worsening was not compared.'));
       } else if (artifact.delta === undefined) {
-        console.error(chalk.red('\nFailing fitness function: --drift-worsening requires --baseline to compare against previous drift.'));
-        return failGate();
+        if (scanOpts.baseline) {
+          console.error(chalk.red(`\n${DRIFT_WORSENING_BASELINE_UNUSABLE}`));
+          return failGate();
+        }
+        console.error(chalk.yellow(`\n${DRIFT_WORSENING_NO_BASELINE}`));
       } else if (artifact.delta > 0) {
         const baselineScore = measuredDrift - artifact.delta;
         const denominator = Math.max(Math.abs(baselineScore), 0.0001);

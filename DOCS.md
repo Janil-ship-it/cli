@@ -5209,7 +5209,8 @@ Passing either flag ignores [`driftBudget`](#drift-budget) in the project config
 | `--drift-budget 40`, DriftScore above 40 | `2` |
 | `--drift-budget 40`, DriftScore equal to 40 or lower | `0` |
 | `--drift-budget` or `--drift-worsening`, DriftScore not measured | `0` |
-| `--drift-worsening 5`, score measured, no numeric `delta` | `2` |
+| `--drift-worsening 5`, score measured, `--baseline` omitted | `0` |
+| `--drift-worsening 5`, `--baseline` set, no numeric `delta` | `2` |
 | `--drift-worsening 5`, rise above 5% | `2` |
 | `--drift-worsening 5`, rise of 5% or less, or the score did not rise | `0` |
 | `--fail-on error`, at least one error-level finding | `2` |
@@ -5222,7 +5223,11 @@ Exit `2` is `GATE_FAILED`. See [Exit Codes](#exit-codes). `--fail-on-epss` uses 
 
 An unmeasured score is absent. It is not compared, and it is not treated as 0. The command prints `DriftScore is absent; --drift-budget <n> was not compared.` or `DriftScore is absent; --drift-worsening was not compared.` and exits `0`. A measured 0 is a real score and is compared. `vg baseline` prints `Baseline score: n/a` when the snapshot's score is null. In JSON the score is `null`; in text it is `n/a`.
 
-"No numeric `delta`" means the scan could not subtract a baseline score. That happens when `--baseline` was omitted, the file is missing, the file could not be read, or the baseline DriftScore is not a number. A file that exists but cannot be read prints `Warning: Could not read baseline file:` and the path. With a measured score, `--drift-worsening` then prints `Failing fitness function: --drift-worsening requires --baseline to compare against previous drift.` and exits `2`. `--drift-budget` still compares the current score when there is no `delta`. A missing baseline file does not by itself fail `--drift-budget`.
+"No numeric `delta`" means the scan could not subtract a baseline score. That happens when `--baseline` was omitted, the file is missing, the file could not be read, or the baseline DriftScore is not a number. A file that exists but cannot be read prints `Warning: Could not read baseline file:` and the path.
+
+With a measured score and no `--baseline`, `--drift-worsening` is not compared. The command prints `--drift-worsening was not compared. Pass --baseline to compare against previous drift.` and exits `0`. The JUnit case is `<skipped>`.
+
+With a measured score and `--baseline` set, but still no numeric `delta`, `--drift-worsening` prints `Failing fitness function: --drift-worsening requires --baseline to compare against previous drift.` and exits `2`. The JUnit case is `<failure>`. `--drift-budget` still compares the current score when there is no `delta`. A missing baseline file does not by itself fail `--drift-budget`.
 
 The budget flag is checked first, then worsening. The first failure exits `2`, so a budget breach is the line you see when both would fail. With `--junit`, the XML is written and then the process exits `2`. See [JUnit](#junit).
 
@@ -5526,7 +5531,7 @@ A finding is a `<failure>` only when its level fails the drift gate you set. Any
 | `warning` | skipped | failure | skipped |
 | `note` | skipped | skipped | skipped |
 
-Budget cases follow the same exit rules as the CLI. `--drift-budget` / an enforced `driftBudget` breach is a `<failure>`. A score that was not measured, a worsening limit with no `--baseline`, and a warn-mode or shadow breach are `<skipped>` — they do not fail the scan. `fail-on-epss` is a `<failure>` when an advisory score is at or above the threshold, a `<skipped>` case when no EPSS score was compared, and a passing case when every compared score is below it. A missing score is skipped, not compared as 0. Every requested gate is included, including gates after the one that stopped the process. The confirmation line goes to stderr, so `--format json` on stdout stays intact. See [Exit Codes](#exit-codes): the XML is written, then the process exits `2` when a gate fails. SARIF stays the code-scanning artifact; see [SARIF](#sarif).
+Budget cases follow the same exit rules as the CLI. `--drift-budget` / an enforced `driftBudget` breach is a `<failure>`. A score that was not measured, `--drift-worsening` with no `--baseline`, a `driftBudget` worsening limit with no `--baseline`, and a warn-mode or shadow breach are `<skipped>` — they do not fail the scan. `--drift-worsening` with `--baseline` set, when that file yields no numeric delta, is a `<failure>` and exits `2`. `fail-on-epss` is a `<failure>` when an advisory score is at or above the threshold, a `<skipped>` case when no EPSS score was compared, and a passing case when every compared score is below it. A missing score is skipped, not compared as 0. Every requested gate is included, including gates after the one that stopped the process. The confirmation line goes to stderr, so `--format json` on stdout stays intact. See [Exit Codes](#exit-codes): the XML is written, then the process exits `2` when a gate fails. SARIF stays the code-scanning artifact; see [SARIF](#sarif).
 
 ```bash
 vg scan --format sarif --out vibgrate.sarif --junit vibgrate.junit.xml --fail-on error --drift-budget 40
@@ -5978,7 +5983,7 @@ A CVSS v3 base score sets the severity when one is present: `9.0` and above is `
 
 `iac-finding[=<severity>]` and `security-finding[=<severity>]` gate infrastructure and security-pack findings. They do not read these advisories. Their severity names are `critical`, `high`, `medium`, `low`, and `info`, and the default threshold is `high`.
 
-The finding gate runs before `--drift-budget` and `--drift-worsening`. `--drift-worsening` compares against `--baseline`. When that flag is set, a measured DriftScore with no numeric `delta` exits `2`. See [CI gate](#ci-gate).
+The finding gate runs before `--drift-budget` and `--drift-worsening`. `--drift-worsening` compares against `--baseline`. With a measured DriftScore and no `--baseline`, the flag is not compared and the process exits `0`. With `--baseline` set and still no numeric `delta`, it exits `2`. See [CI gate](#ci-gate).
 
 When you pass them, `--out`, `--junit`, and `--summary-out` are written before the process exits. A later step that publishes those files needs `if: always()`. See [JUnit](#junit).
 

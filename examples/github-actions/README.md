@@ -116,7 +116,8 @@ Two different knobs both use the word "warn". They do not mean the same thing.
 | `--fail-on-epss` value outside 0 to 1 | 1 | Fail before the scan. This is a runtime error, not a usage error. |
 | `--drift-budget 40`, DriftScore **above** 40 | 2 | Fail. A score equal to 40 passes. |
 | `--drift-budget 40`, DriftScore not measured | 0 | Pass. The score is absent, not 0, and the budget is not compared. |
-| `--drift-worsening 5`, score measured, no `--baseline` | 2 | Fail. The flag cannot compare. |
+| `--drift-worsening 5`, score measured, no `--baseline` | 0 | Pass. The flag is not compared. Pass `--baseline` to compare. |
+| `--drift-worsening 5`, `--baseline` set, no numeric delta | 2 | Fail. The baseline could not be compared. |
 | `--drift-worsening 5`, DriftScore not measured | 0 | Pass. The flag is not compared. |
 | `--drift-worsening 5`, worsening **above** 5% versus the baseline | 2 | Fail. |
 | `driftBudget.mode: warn` (default) and a breach | 0 | Pass. The breach is printed. The log says to set `enforce` to fail the scan. |
@@ -168,7 +169,7 @@ A missing or invalid budget is neutral. The check does not block the merge unles
 
 ### JUnit
 
-`--junit vibgrate.junit.xml` writes that file before the process exits, including on exit 2. A warn-mode or shadow breach is `<skipped>` and does not fail the scan. An enforced budget breach is `<failure>`. The exit code is unchanged. See [JUnit](../../DOCS.md#junit) and [Exit Codes](../../DOCS.md#exit-codes).
+`--junit vibgrate.junit.xml` writes that file before the process exits, including on exit 2. A warn-mode or shadow breach, an unmeasured score, and `--drift-worsening` without `--baseline` are `<skipped>` and do not fail the scan. An enforced budget breach is `<failure>`. The exit code is unchanged. See [JUnit](../../DOCS.md#junit) and [Exit Codes](../../DOCS.md#exit-codes).
 
 ### Assertions
 

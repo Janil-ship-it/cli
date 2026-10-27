@@ -166,6 +166,10 @@ describe('scan JUnit gates', () => {
   it('maps --drift-worsening, including a missing baseline', () => {
     expect(driftWorseningFlagCase(null, undefined, 5).status).toBe('skipped');
     expect(driftWorseningFlagCase(50, undefined, 5)).toMatchObject({
+      status: 'skipped',
+      message: '--drift-worsening was not compared. Pass --baseline to compare against previous drift.',
+    });
+    expect(driftWorseningFlagCase(50, undefined, 5, '.vibgrate/baseline.json')).toMatchObject({
       status: 'failure',
       message: 'Failing fitness function: --drift-worsening requires --baseline to compare against previous drift.',
     });

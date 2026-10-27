@@ -19,7 +19,12 @@
  * drift gate; otherwise it is `<skipped>`. Notes never fail a gate.
  */
 import * as path from 'node:path';
-import { compareDriftBudget, type DriftBudgetGateResult } from './drift-budget-gate.js';
+import {
+  compareDriftBudget,
+  DRIFT_WORSENING_BASELINE_UNUSABLE,
+  DRIFT_WORSENING_NO_BASELINE,
+  type DriftBudgetGateResult,
+} from './drift-budget-gate.js';
 import { epssAdvisoryRow, type EpssGateResult } from './epss-gate.js';
 import { compareCodeUnits } from '../core-open/utils/code-unit.js';
 import { writeTextFile } from './utils/fs.js';
@@ -259,17 +264,16 @@ export function driftWorseningFlagCase(
   score: number | null,
   delta: number | undefined,
   limit: number,
+  baseline?: string,
 ): JUnitTestCase {
   if (score === null) {
     return skipped(JUNIT_GATES_CLASS, 'drift-worsening', 'DriftScore is absent; --drift-worsening was not compared.');
   }
   if (delta === undefined) {
-    return failure(
-      JUNIT_GATES_CLASS,
-      'drift-worsening',
-      'gate',
-      'Failing fitness function: --drift-worsening requires --baseline to compare against previous drift.',
-    );
+    // No `--baseline`: the flag was not compared. A baseline that was passed
+    // but produced no numeric delta is a failure — the comparison was requested.
+    if (!baseline) return skipped(JUNIT_GATES_CLASS, 'drift-worsening', DRIFT_WORSENING_NO_BASELINE);
+    return failure(JUNIT_GATES_CLASS, 'drift-worsening', 'gate', DRIFT_WORSENING_BASELINE_UNUSABLE);
   }
   if (delta > 0) {
     const baselineScore = score - delta;
