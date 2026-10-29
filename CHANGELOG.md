@@ -14,6 +14,17 @@ backward compatible.
 
 ### Fixed
 
+- **`vg sbom export` marks Python dependency groups as development dependencies.**
+  A package declared only in `pyproject.toml` `[dependency-groups]`,
+  `[tool.poetry.group.<name>.dependencies]`, or the legacy
+  `[tool.poetry.dev-dependencies]` table is stored as section
+  `devDependencies`. CycloneDX component `scope` is `excluded`, and SPDX
+  writes `DEV_DEPENDENCY_OF`. `vibgrate:scope` stays `direct`. A package that
+  is also in `[project] dependencies` or a required
+  `[tool.poetry.dependencies]` entry stays a production row. A package in a
+  dev group and an optional extra, with no production row, stays a
+  development row. A `{include-group = "..."}` entry is not expanded. The
+  `python` key is still not a dependency.
 - **`vg sbom export` marks Gradle test configurations as development dependencies.** A `testImplementation`, `testRuntimeOnly`, or `testCompileOnly` dependency in `build.gradle` or `build.gradle.kts` is stored as section `devDependencies`. CycloneDX component `scope` is `excluded`, and SPDX writes `DEV_DEPENDENCY_OF`. `implementation`, `api`, `compileOnly`, `runtimeOnly`, and `platform` stay section `dependencies`. A coordinate declared on a production configuration and a test configuration stays a production dependency, and the production declaration supplies the version. `vibgrate:scope` stays `direct`.
 
 - **`vg scan --vulns` JSON keeps one finding when CVE, GHSA, and OSV ids are aliases.** Linked ids, including a chain through a third id, collapse to one group. The group id is the lowest CVE in the group, or the lowest advisory id when there is no CVE. A single advisory keeps its own id. Alias lists are sorted, and the same tree with the same `--package-manifest` writes the same group on every run. SARIF still writes one result per advisory id.
@@ -98,8 +109,7 @@ backward compatible.
   `optionalDependencies`. CycloneDX component `scope` is `optional`, and SPDX
   writes `OPTIONAL_DEPENDENCY_OF`. A `[project] dependencies` package still
   omits component `scope`. A name listed in both is stored once, as
-  `optionalDependencies`. `[dependency-groups]` and Poetry dependency groups
-  stay out of the scan artifact.
+  `optionalDependencies`. An extra whose name is `dev` is still this section.
 
 - **`vg sbom export` marks an optional Poetry dependency.** A
   `[tool.poetry.dependencies]` inline table with `optional = true` is stored

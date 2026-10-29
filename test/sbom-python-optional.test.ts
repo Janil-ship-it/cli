@@ -1,8 +1,9 @@
 /**
  * PEP 621 `[project.optional-dependencies]` is an optional manifest row.
- * `[dependency-groups]` and Poetry dependency groups stay off that mark.
  * A name that is also in `[project] dependencies` stays optional, and the
  * exported document does not depend on which table is written first.
+ * A package the manifest does not declare stays transitive when the lockfile
+ * lists it. Dependency groups are covered in `sbom-python-dev-groups.test.ts`.
  */
 import * as fs from 'node:fs';
 import * as os from 'node:os';
@@ -28,12 +29,6 @@ version = "8.3.2"
 `;
 
 function manifest(order: 'prod-first' | 'extra-first'): string {
-  const noise = `[dependency-groups]
-dev = ["pytest>=8"]
-
-[tool.poetry.group.dev.dependencies]
-pytest = "^8.0.0"
-`;
   if (order === 'prod-first') {
     return `[project]
 name = "app"
@@ -42,11 +37,9 @@ dependencies = ["httpx>=0.27", "psycopg>=3.1"]
 [project.optional-dependencies]
 postgres = ["psycopg>=3.1"]
 db = ["psycopg>=3.1"]
-
-${noise}`;
+`;
   }
-  return `${noise}
-[project.optional-dependencies]
+  return `[project.optional-dependencies]
 db = ["psycopg>=3.1"]
 postgres = ["psycopg>=3.1"]
 
